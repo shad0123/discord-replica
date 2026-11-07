@@ -369,6 +369,105 @@
 
       .scrim { display: none; }
 
+      /* ============ PHASE 2: DMs, reactions, replies, typing, edit ============ */
+      .chat { position: relative; }
+      .typing-bar {
+        height: 24px; flex: 0 0 24px; padding: 0 16px;
+        font-size: 13px; font-weight: 600; color: var(--text-muted);
+        display: flex; align-items: center; gap: 6px; visibility: hidden;
+      }
+      .typing-bar.show { visibility: visible; }
+      .typing-dots { display: inline-flex; gap: 3px; align-items: center; }
+      .typing-dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--text-muted); animation: tblink 1.2s infinite; }
+      .typing-dots i:nth-child(2) { animation-delay: 0.15s; }
+      .typing-dots i:nth-child(3) { animation-delay: 0.3s; }
+      @keyframes tblink { 0%, 60%, 100% { opacity: 0.3; } 30% { opacity: 1; } }
+      .reply-bar {
+        display: none; align-items: center; gap: 8px;
+        background: var(--bg-dark); border-radius: 8px 8px 0 0;
+        padding: 8px 12px; font-size: 13px; color: var(--text-muted);
+        margin-bottom: -6px; padding-bottom: 12px;
+      }
+      .reply-bar.show { display: flex; }
+      .reply-bar .rb-text { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .reply-bar .rb-text strong { color: var(--text); }
+      .reply-bar .rb-close { color: var(--text-muted); font-size: 15px; line-height: 1; padding: 2px 4px; }
+      .reply-bar .rb-close:hover { color: var(--text-bright); }
+      .msg { position: relative; }
+      .msg-actions {
+        position: absolute; top: -13px; right: 16px; z-index: 5;
+        display: none; background: var(--bg-dark);
+        border: 1px solid rgba(255, 255, 255, 0.09); border-radius: 6px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35); overflow: hidden;
+      }
+      .msg:hover .msg-actions, .msg:focus-within .msg-actions { display: flex; }
+      .msg-actions button {
+        width: 30px; height: 28px; display: flex; align-items: center; justify-content: center;
+        color: var(--text-muted);
+      }
+      .msg-actions button:hover { background: var(--bg-hover); color: var(--text-bright); }
+      .msg-actions button.danger:hover { background: var(--red); color: #fff; }
+      .msg-actions svg { width: 16px; height: 16px; }
+      .reply-quote {
+        display: flex; gap: 6px; align-items: baseline;
+        font-size: 13px; color: var(--text-muted); margin-bottom: 2px; max-width: 100%;
+      }
+      .reply-quote .rq-arrow { color: var(--text-faint); flex: 0 0 auto; font-size: 12px; }
+      .reply-quote .rq-name { font-weight: 600; color: var(--text); white-space: nowrap; }
+      .reply-quote .rq-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0.85; }
+      .edited-mark { font-size: 10px; color: var(--text-faint); margin-left: 4px; white-space: nowrap; }
+      .reactions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+      .reaction-chip {
+        display: inline-flex; align-items: center; gap: 5px;
+        padding: 2px 8px; border-radius: 6px; font-size: 13px; color: var(--text);
+        background: rgba(88, 101, 242, 0.08); border: 1px solid rgba(255, 255, 255, 0.09);
+      }
+      .reaction-chip:hover { border-color: rgba(255, 255, 255, 0.3); }
+      .reaction-chip.mine { background: rgba(88, 101, 242, 0.3); border-color: var(--blurple); color: var(--text-bright); }
+      .reaction-chip .rc { font-weight: 700; font-size: 12px; }
+      .react-picker {
+        position: fixed; z-index: 60; display: flex; gap: 2px;
+        background: var(--bg-dark); border: 1px solid rgba(255, 255, 255, 0.09);
+        border-radius: 24px; box-shadow: var(--shadow); padding: 4px;
+      }
+      .react-picker button {
+        width: 36px; height: 36px; font-size: 19px; border-radius: 50%;
+        display: flex; align-items: center; justify-content: center; line-height: 1;
+      }
+      .react-picker button:hover { background: var(--bg-hover); }
+      .edit-box { margin-top: 2px; }
+      .edit-box textarea {
+        width: 100%; background: var(--bg-input); border: none; outline: none;
+        border-radius: 8px; color: var(--text-bright);
+        font-size: 15px; line-height: 1.4; padding: 10px 12px; resize: none;
+      }
+      .edit-hint { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
+      .edit-hint button { color: #00a8fc; font-size: 12px; padding: 0; }
+      .edit-hint button:hover { text-decoration: underline; }
+      .dm-item {
+        display: flex; align-items: center; gap: 10px;
+        width: 100%; text-align: left;
+        padding: 5px 8px; margin-bottom: 2px;
+        border-radius: 4px; color: var(--text-muted);
+      }
+      .dm-item:hover { background: var(--bg-hover); color: var(--text); }
+      .dm-item.active { background: var(--bg-active); color: var(--text-bright); }
+      .dm-item .avatar-disc { width: 32px; height: 32px; font-size: 16px; }
+      .dm-item .avatar-disc .presence-dot { border-color: var(--bg-dark); background: var(--green); }
+      .dm-item.offline .avatar-disc .presence-dot { background: var(--text-faint); }
+      .dm-item .dm-name { font-size: 15px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .member-item { width: 100%; text-align: left; }
+      button.member-item { cursor: pointer; }
+      .member-item .dm-hint { margin-left: auto; font-size: 11px; color: var(--text-faint); opacity: 0; flex: 0 0 auto; }
+      .member-item:hover .dm-hint { opacity: 1; }
+      .chat-peer-avatar .avatar-disc { width: 28px; height: 28px; font-size: 15px; }
+      .chat-empty .big-avatar {
+        width: 68px; height: 68px; border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 36px; margin-bottom: 12px;
+      }
+      .server-icon svg { width: 26px; height: 26px; }
+
       /* ============ RESPONSIVE ============ */
       @media (max-width: 1080px) {
         .members { display: none; }
@@ -429,13 +528,17 @@
           </button>
         </div>
         <div class="channel-scroll">
-          <div class="channel-group-head">
+          <div class="channel-group-head" id="channelsHead">
             <span>Text Channels</span>
             <button class="icon-btn" id="addChannelBtn" title="Create channel" aria-label="Create channel">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
             </button>
           </div>
           <div id="channelList"></div>
+          <div class="channel-group-head" style="margin-top:14px;">
+            <span>Direct Messages</span>
+          </div>
+          <div id="dmList"></div>
         </div>
         <div class="user-panel">
           <div class="avatar-disc" id="myAvatar"><span class="presence-dot"></span></div>
@@ -454,7 +557,8 @@
           <button class="icon-btn mobile-only" id="menuBtn" title="Channels" aria-label="Open channel list">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
           </button>
-          <span class="hash">#</span>
+          <span class="hash" id="chatHash">#</span>
+          <span class="chat-peer-avatar hidden" id="chatPeerAvatar"></span>
           <span class="cname" id="chatChannelName">general</span>
           <span class="spacer"></span>
           <button class="icon-btn members-toggle" id="membersBtn" title="Members" aria-label="Toggle member list" style="display:none;">
@@ -475,7 +579,13 @@
 
         <div class="messages" id="messages"></div>
 
+        <div class="typing-bar" id="typingBar" aria-live="polite"></div>
+
         <div class="composer" id="composer">
+          <div class="reply-bar" id="replyBar">
+            <span class="rb-text" id="replyBarText"></span>
+            <button class="rb-close" id="replyCancelBtn" title="Cancel reply" aria-label="Cancel reply">✕</button>
+          </div>
           <div class="composer-box">
             <textarea id="msgInput" rows="1" maxlength="2000" placeholder="Message #general"></textarea>
             <button class="send-btn" id="sendBtn" title="Send" aria-label="Send message">
@@ -488,6 +598,7 @@
       <aside class="members" id="membersPanel" aria-label="Members">
         <div id="memberList"></div>
       </aside>
+      <div class="react-picker hidden" id="reactPicker" role="menu" aria-label="Add a reaction"></div>
     </div>
 
     <div class="scrim" id="scrim"></div>
@@ -549,11 +660,69 @@
         members: {},              // uid -> member record
         pendingInvite: null,
         entered: false,
-        restAuth: false
+        restAuth: false,
+        /* ---- Phase 2 state ---- */
+        view: "server",           // "server" | "dm"
+        curDM: null,              // dmId when view === "dm"
+        curPeer: null,            // { uid, nickname, avatar } of the DM partner
+        dmList: {},               // dmId -> { peerUid, peerNickname, peerAvatar, updatedAt }
+        peerOnline: {},           // uid -> bool (global presence from users/{uid})
+        curMsgs: {},              // mid -> message record for the open conversation
+        replyTo: null,            // { mid, uid, nickname, text } being replied to
+        typing: {}                // uid -> { nickname, ts } for the open conversation
       };
 
-      var refs = { userServers: null, channels: null, messages: null, members: null, meta: {} };
+      var refs = { userServers: null, channels: null, messages: null, members: null, meta: {}, userDMs: null, typing: null, peerPresence: {} };
       var presenceSet = {};
+
+      /* ================= Phase 2 — Firebase data layout =================
+         DMs:
+           dmId = the two uids sorted alphabetically, joined with "_"
+           dmMeta/{dmId}            -> { members: { uid: { nickname, avatar } }, createdAt, lastTs, lastText }
+           dmMessages/{dmId}/{mid}  -> same fields as channel messages (uid, nickname, avatar, text, ts)
+                                       plus optional editedAt and replyTo (see below)
+           userDMs/{uid}/{dmId}     -> { peerUid, peerNickname, peerAvatar, updatedAt }
+                                       (per-user DM list shown in the sidebar)
+         Reactions (stored on the message itself, works for channels + DMs):
+           .../messages/{mid}/reactions/{emojiKey}/{uid} = true
+           emojiKey is one of REACTIONS[].k (thumbsup, heart, laugh, wow, sad, angry)
+         Edit / delete:
+           edit   -> update .../{mid} with { text, editedAt } (editedAt renders as "(edited)")
+           delete -> remove .../{mid} entirely
+         Reply:
+           .../{mid}/replyTo = { mid, uid, nickname, text } — a snapshot of the quoted
+           message, so the quote still renders if the original is later deleted.
+         Typing indicators (auto-expire: writers refresh ts, readers ignore entries
+         older than ~6s, and writers remove their node when idle / on disconnect):
+           typing/channels/{sid}/{cid}/{uid} = { nickname, ts }
+           typing/dms/{dmId}/{uid}           = { nickname, ts }
+         Global presence for the DM list (extends the users/{uid} profile):
+           users/{uid}/online = true/false, users/{uid}/lastSeen
+      ==================================================================== */
+      var REACTIONS = [
+        { k: "thumbsup", e: "👍" },
+        { k: "heart", e: "❤️" },
+        { k: "laugh", e: "😂" },
+        { k: "wow", e: "😮" },
+        { k: "sad", e: "😢" },
+        { k: "angry", e: "😡" }
+      ];
+      function reactionEmoji(key) {
+        for (var i = 0; i < REACTIONS.length; i++) if (REACTIONS[i].k === key) return REACTIONS[i].e;
+        return "👍";
+      }
+      function dmIdFor(a, b) { return [a, b].sort().join("_"); }
+      /* Base path of the open conversation's messages (channel or DM). */
+      function msgBasePath() {
+        if (S.view === "dm" && S.curDM) return "dmMessages/" + S.curDM;
+        if (S.curServer && S.curChannel) return "messages/" + S.curServer + "/" + S.curChannel;
+        return null;
+      }
+      function typingPath() {
+        if (S.view === "dm" && S.curDM) return "typing/dms/" + S.curDM;
+        if (S.curServer && S.curChannel) return "typing/channels/" + S.curServer + "/" + S.curChannel;
+        return null;
+      }
 
       /* ================= Helpers ================= */
       function esc(s) {
@@ -613,7 +782,7 @@
       }
       function closeModal() { $("modalRoot").innerHTML = ""; }
       document.addEventListener("keydown", function (e) {
-        if (e.key === "Escape") { closeModal(); closeOverlays(); }
+        if (e.key === "Escape") { closeModal(); closeOverlays(); hideReactPicker(); if (S.replyTo) setReplyTo(null); }
       });
       function modalError(id, msg) {
         var el = $(id);
@@ -782,6 +951,12 @@
       function renderRail() {
         var rail = $("rail");
         var html = "";
+        html += '<div class="rail-item' + (S.view === "dm" ? " active" : "") + '">' +
+          '<span class="rail-pill"></span>' +
+          '<button class="server-icon" id="railDM" title="Direct Messages" aria-label="Direct Messages">' +
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>' +
+          "</button></div>";
+        html += '<div class="rail-sep"></div>';
         var ids = Object.keys(S.myServers);
         ids.sort(function (a, b) {
           var an = (S.serverMeta[a] && S.serverMeta[a].name) || "";
@@ -798,6 +973,7 @@
         html += '<div class="rail-sep"></div>' +
           '<button class="add-server-btn" id="railAdd" title="Add a server" aria-label="Add a server">+</button>';
         rail.innerHTML = html;
+        $("railDM").addEventListener("click", function () { showDMHome(); });
         var btns = rail.querySelectorAll("[data-server]");
         for (var i = 0; i < btns.length; i++) {
           btns[i].addEventListener("click", function () { selectServer(this.getAttribute("data-server")); });
@@ -844,11 +1020,13 @@
         online.sort(byName); offline.sort(byName);
         function row(pair, isOff) {
           var a = avatarOf(pair[1].avatar);
-          return '<div class="member-item' + (isOff ? " offline" : "") + '">' +
+          var isSelf = pair[0] === S.uid;
+          return '<button type="button" class="member-item' + (isOff ? " offline" : "") + (isSelf ? " self" : "") + '" data-member="' + pair[0] + '"' + (isSelf ? ' title="That\'s you"' : ' title="Send a direct message"') + '>' +
             '<div class="avatar-disc" style="background:' + a.bg + '">' + a.e + '<span class="presence-dot"></span></div>' +
             '<span class="mname">' + esc(pair[1].nickname || "Unknown") + "</span>" +
             (pair[0] === owner ? '<span class="crown" title="Server owner">👑</span>' : "") +
-            "</div>";
+            (isSelf ? "" : '<span class="dm-hint">Message</span>') +
+            "</button>";
         }
         var html = "";
         if (online.length) {
@@ -861,29 +1039,121 @@
         }
         if (!online.length && !offline.length) html = '<div class="sidebar-empty">No members yet.</div>';
         el.innerHTML = html;
+        var mbtns = el.querySelectorAll("[data-member]");
+        for (var i = 0; i < mbtns.length; i++) {
+          mbtns[i].addEventListener("click", function () {
+            var uid = this.getAttribute("data-member");
+            if (uid === S.uid) return;
+            var m = S.members[uid];
+            if (m) openDM(uid, { nickname: m.nickname || "Unknown", avatar: m.avatar || 0 });
+            closeOverlays();
+          });
+        }
       }
 
-      function renderMessages(snap) {
+      /* Sidebar "Direct Messages" list (from userDMs/{myUid}). */
+      function renderDMList() {
+        var el = $("dmList");
+        if (!el) return;
+        var ids = Object.keys(S.dmList);
+        ids.sort(function (a, b) { return ((S.dmList[b].updatedAt || 0) - (S.dmList[a].updatedAt || 0)); });
+        if (!ids.length) {
+          el.innerHTML = '<div class="sidebar-empty">No DMs yet. Click a member in the member list to start one.</div>';
+          return;
+        }
+        var html = "";
+        ids.forEach(function (dmId) {
+          var d = S.dmList[dmId];
+          var a = avatarOf(d.peerAvatar);
+          var on = !!S.peerOnline[d.peerUid];
+          html += '<button type="button" class="dm-item' + (dmId === S.curDM && S.view === "dm" ? " active" : "") + (on ? "" : " offline") + '" data-dm="' + dmId + '">' +
+            '<div class="avatar-disc" style="background:' + a.bg + '">' + a.e + '<span class="presence-dot"></span></div>' +
+            '<span class="dm-name">' + esc(d.peerNickname || "Unknown") + "</span></button>";
+        });
+        el.innerHTML = html;
+        var btns = el.querySelectorAll("[data-dm]");
+        for (var i = 0; i < btns.length; i++) {
+          btns[i].addEventListener("click", function () {
+            var dmId = this.getAttribute("data-dm");
+            var d = S.dmList[dmId];
+            if (d) openDM(d.peerUid, { nickname: d.peerNickname, avatar: d.peerAvatar });
+            closeOverlays();
+          });
+        }
+      }
+
+      var ICON_REPLY = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 9V5l-7 7 7 7v-4.1c5 0 8.5 1.6 11 5.1-1-5-4-10-11-11z"/></svg>';
+      var ICON_REACT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 14.5c.8 1.2 2 1.8 3.5 1.8s2.7-.6 3.5-1.8"/><circle cx="9" cy="9.5" r="0.6" fill="currentColor"/><circle cx="15" cy="9.5" r="0.6" fill="currentColor"/><path d="M18.5 2.5v4M16.5 4.5h4" stroke-width="1.8"/></svg>';
+      var ICON_EDIT = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>';
+      var ICON_TRASH = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>';
+
+      function reactionsHTML(mid, m) {
+        if (!m.reactions) return "";
+        var chips = "";
+        REACTIONS.forEach(function (r) {
+          var users = m.reactions[r.k];
+          if (!users) return;
+          var count = Object.keys(users).length;
+          if (!count) return;
+          var mine = !!users[S.uid];
+          chips += '<button type="button" class="reaction-chip' + (mine ? " mine" : "") + '" data-action="react-toggle" data-mid="' + mid + '" data-emoji="' + r.k + '" title="' + (mine ? "Remove your reaction" : "Add reaction") + '">' + r.e + ' <span class="rc">' + count + "</span></button>";
+        });
+        if (!chips) return "";
+        return '<div class="reactions">' + chips + "</div>";
+      }
+
+      function msgInnerHTML(mid, m) {
+        var html = "";
+        if (m.replyTo && m.replyTo.nickname) {
+          html += '<div class="reply-quote"><span class="rq-arrow">↩</span><span class="rq-name">@' + esc(m.replyTo.nickname) + '</span><span class="rq-text">' + esc(m.replyTo.text || "") + "</span></div>";
+        }
+        html += '<div class="msg-text">' + esc(m.text) + (m.editedAt ? '<span class="edited-mark">(edited)</span>' : "") + "</div>";
+        html += reactionsHTML(mid, m);
+        return html;
+      }
+
+      function msgActionsHTML(mid, m) {
+        var html = '<div class="msg-actions">' +
+          '<button type="button" data-action="add-react" data-mid="' + mid + '" title="Add reaction" aria-label="Add reaction">' + ICON_REACT + "</button>" +
+          '<button type="button" data-action="reply" data-mid="' + mid + '" title="Reply" aria-label="Reply">' + ICON_REPLY + "</button>";
+        if (m.uid === S.uid) {
+          html += '<button type="button" data-action="edit" data-mid="' + mid + '" title="Edit" aria-label="Edit message">' + ICON_EDIT + "</button>" +
+            '<button type="button" class="danger" data-action="delete" data-mid="' + mid + '" title="Delete" aria-label="Delete message">' + ICON_TRASH + "</button>";
+        }
+        return html + "</div>";
+      }
+
+      function renderMessages(snap) { renderConversation(snap.val() || {}); }
+
+      function renderConversation(data) {
         var box = $("messages");
         var nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 140;
-        var data = snap.val() || {};
-        var ids = Object.keys(data).sort();
-        var chanName = S.channels[S.curChannel] ? S.channels[S.curChannel].name : "channel";
-        var html = '<div class="chat-empty"><div class="big-hash">#</div>' +
-          "<h2>Welcome to #" + esc(chanName) + "!</h2>" +
-          "<p>This is the very beginning of the #" + esc(chanName) + " channel.</p></div>";
+        S.curMsgs = data || {};
+        var ids = Object.keys(S.curMsgs).sort();
+        var html = "";
+        if (S.view === "dm" && S.curPeer) {
+          var pa = avatarOf(S.curPeer.avatar);
+          html += '<div class="chat-empty"><div class="big-avatar" style="background:' + pa.bg + '">' + pa.e + "</div>" +
+            "<h2>" + esc(S.curPeer.nickname) + "</h2>" +
+            "<p>This is the beginning of your direct message history with " + esc(S.curPeer.nickname) + ".</p></div>";
+        } else {
+          var chanName = S.channels[S.curChannel] ? S.channels[S.curChannel].name : "channel";
+          html += '<div class="chat-empty"><div class="big-hash">#</div>' +
+            "<h2>Welcome to #" + esc(chanName) + "!</h2>" +
+            "<p>This is the very beginning of the #" + esc(chanName) + " channel.</p></div>";
+        }
         var prevUid = null, prevTs = 0;
         ids.forEach(function (mid) {
-          var m = data[mid];
+          var m = S.curMsgs[mid];
           if (!m || typeof m.text !== "string") return;
-          var grouped = prevUid === m.uid && (m.ts - prevTs) < 5 * 60 * 1000;
+          var grouped = prevUid === m.uid && !m.replyTo && (m.ts - prevTs) < 5 * 60 * 1000;
           var a = avatarOf(m.avatar);
           if (grouped) {
-            html += '<div class="msg compact"><div class="avatar-spacer"></div><div class="msg-body"><div class="msg-text">' + esc(m.text) + "</div></div></div>";
+            html += '<div class="msg compact" data-mid="' + mid + '"><div class="avatar-spacer"></div><div class="msg-body">' + msgInnerHTML(mid, m) + "</div>" + msgActionsHTML(mid, m) + "</div>";
           } else {
-            html += '<div class="msg"><div class="avatar-disc" style="background:' + a.bg + '">' + a.e + '</div><div class="msg-body">' +
+            html += '<div class="msg" data-mid="' + mid + '"><div class="avatar-disc" style="background:' + a.bg + '">' + a.e + '</div><div class="msg-body">' +
               '<div class="msg-head"><span class="msg-author">' + esc(m.nickname || "Unknown") + '</span><span class="msg-time">' + esc(fmtTime(m.ts || Date.now())) + "</span></div>" +
-              '<div class="msg-text">' + esc(m.text) + "</div></div></div>";
+              msgInnerHTML(mid, m) + "</div>" + msgActionsHTML(mid, m) + "</div>";
           }
           prevUid = m.uid; prevTs = m.ts || 0;
         });
@@ -902,7 +1172,7 @@
         ref.on("value", function (snap) {
           S.serverMeta[sid] = snap.val() || {};
           renderRail();
-          if (sid === S.curServer) {
+          if (sid === S.curServer && S.view === "server") {
             $("serverName").textContent = S.serverMeta[sid].name || "Server";
           }
         });
@@ -910,11 +1180,15 @@
 
       function selectServer(sid) {
         if (!sid) return;
+        S.view = "server";
+        S.curDM = null;
+        S.curPeer = null;
         S.curServer = sid;
         S.curChannel = null;
         S.channels = {};
+        applyViewChrome();
         if (refs.channels) { refs.channels.off(); refs.channels = null; }
-        if (refs.messages) { refs.messages.off(); refs.messages = null; }
+        detachConversation();
         if (refs.members) { refs.members.off(); refs.members = null; }
         attachMetaListener(sid);
         setPresence(sid);
@@ -938,7 +1212,7 @@
           if (S.curServer !== sid) return;
           S.channels = snap.val() || {};
           renderChannels();
-          if (!S.curChannel || !S.channels[S.curChannel]) {
+          if (S.view === "server" && (!S.curChannel || !S.channels[S.curChannel])) {
             var ids = Object.keys(S.channels).sort(function (a, b) {
               return ((S.channels[a].createdAt || 0) - (S.channels[b].createdAt || 0));
             });
@@ -948,37 +1222,148 @@
       }
 
       function selectChannel(cid) {
-        if (!cid || cid === S.curChannel && refs.messages) { renderChannels(); return; }
+        if (!cid) return;
+        if (S.view === "server" && cid === S.curChannel && refs.messages) { renderChannels(); return; }
+        S.view = "server";
+        S.curDM = null;
+        S.curPeer = null;
         S.curChannel = cid;
+        applyViewChrome();
         renderChannels();
+        renderDMList();
         var chan = S.channels[cid];
         $("chatChannelName").textContent = chan ? chan.name : "channel";
         $("msgInput").placeholder = "Message #" + (chan ? chan.name : "channel");
+        attachConversation("messages/" + S.curServer + "/" + cid, "typing/channels/" + S.curServer + "/" + cid);
+      }
+
+      /* ---------- Phase 2: conversation switching (channels + DMs) ---------- */
+      function detachConversation() {
+        clearMyTyping();
         if (refs.messages) { refs.messages.off(); refs.messages = null; }
+        if (refs.typing) { refs.typing.off(); refs.typing = null; }
+        S.typing = {};
+        renderTyping();
+        setReplyTo(null);
+        hideReactPicker();
+        S.curMsgs = {};
+      }
+      function attachConversation(path, typingP) {
+        detachConversation();
         var box = $("messages");
         delete box.dataset.init;
-        var sid = S.curServer;
-        refs.messages = db.ref("messages/" + sid + "/" + cid).limitToLast(200);
+        box.innerHTML = "";
+        refs.messages = db.ref(path).limitToLast(200);
         refs.messages.on("value", function (snap) {
-          if (S.curChannel !== cid || S.curServer !== sid) return;
+          if (msgBasePath() !== path) return;
           renderMessages(snap);
         });
+        refs.typing = db.ref(typingP);
+        refs.typing.on("value", function (snap) {
+          if (typingPath() !== typingP) return;
+          S.typing = snap.val() || {};
+          renderTyping();
+        });
+      }
+      /* Sidebar + header chrome for server view vs DM view. */
+      function applyViewChrome() {
+        var dm = S.view === "dm";
+        $("channelsHead").classList.toggle("hidden", dm);
+        $("channelList").classList.toggle("hidden", dm);
+        $("inviteBtn").classList.toggle("hidden", dm);
+        $("chatHash").classList.toggle("hidden", dm);
+        $("chatPeerAvatar").classList.toggle("hidden", !dm);
+        if (dm) $("membersBtn").style.setProperty("display", "none", "important");
+        else $("membersBtn").style.removeProperty("display");
+        $("membersPanel").classList.toggle("hidden", dm);
+        if (dm) {
+          $("serverName").textContent = "Direct Messages";
+          $("membersPanel").classList.remove("open");
+        } else if (S.curServer && S.serverMeta[S.curServer]) {
+          $("serverName").textContent = S.serverMeta[S.curServer].name || "Server";
+        }
+        renderDMList();
+      }
+      /* The @me / DM home: sidebar switches to the DM list. */
+      function showDMHome() {
+        S.view = "dm";
+        applyViewChrome();
+        renderRail();
+        if (!S.curDM) {
+          // No conversation open yet: show a friendly empty chat pane.
+          detachConversation();
+          $("welcomePane").classList.add("hidden");
+          $("messages").classList.remove("hidden");
+          $("composer").classList.remove("hidden");
+          $("chatHeader").classList.remove("hidden");
+          $("chatChannelName").textContent = "Direct Messages";
+          $("msgInput").placeholder = "Pick someone from Direct Messages to start chatting";
+          $("messages").innerHTML = '<div class="chat-empty"><div class="big-hash">@</div><h2>Direct Messages</h2><p>Pick a conversation on the left, or click a member in a server\'s member list to start a new one.</p></div>';
+        } else if (S.curPeer) {
+          openDM(S.curPeer.uid, { nickname: S.curPeer.nickname, avatar: S.curPeer.avatar });
+        }
+      }
+      /* Open (or create) the 1-to-1 DM with a peer. */
+      function openDM(peerUid, peerProfile) {
+        if (!peerUid || peerUid === S.uid || !peerProfile) return;
+        var dmId = dmIdFor(S.uid, peerUid);
+        S.view = "dm";
+        S.curDM = dmId;
+        S.curPeer = { uid: peerUid, nickname: peerProfile.nickname || "Unknown", avatar: peerProfile.avatar || 0 };
+        // Create/refresh the DM metadata + both users' sidebar entries.
+        var updates = {};
+        updates["dmMeta/" + dmId + "/members/" + S.uid] = { nickname: S.profile.nickname, avatar: S.profile.avatar };
+        updates["dmMeta/" + dmId + "/members/" + peerUid] = { nickname: S.curPeer.nickname, avatar: S.curPeer.avatar };
+        updates["userDMs/" + S.uid + "/" + dmId] = { peerUid: peerUid, peerNickname: S.curPeer.nickname, peerAvatar: S.curPeer.avatar, updatedAt: firebase.database.ServerValue.TIMESTAMP };
+        updates["userDMs/" + peerUid + "/" + dmId] = { peerUid: S.uid, peerNickname: S.profile.nickname, peerAvatar: S.profile.avatar, updatedAt: firebase.database.ServerValue.TIMESTAMP };
+        db.ref().update(updates).catch(function () {});
+        db.ref("dmMeta/" + dmId + "/createdAt").once("value").then(function (s) {
+          if (!s.val()) db.ref("dmMeta/" + dmId + "/createdAt").set(firebase.database.ServerValue.TIMESTAMP);
+        }).catch(function () {});
+        applyViewChrome();
+        renderRail();
+        $("welcomePane").classList.add("hidden");
+        $("messages").classList.remove("hidden");
+        $("composer").classList.remove("hidden");
+        $("chatHeader").classList.remove("hidden");
+        var pa = avatarOf(S.curPeer.avatar);
+        $("chatPeerAvatar").innerHTML = '<div class="avatar-disc" style="background:' + pa.bg + '">' + pa.e + "</div>";
+        $("chatChannelName").textContent = S.curPeer.nickname;
+        $("msgInput").placeholder = "Message @" + S.curPeer.nickname;
+        attachConversation("dmMessages/" + dmId, "typing/dms/" + dmId);
       }
 
       /* ================= Sending ================= */
       function sendMessage() {
         var input = $("msgInput");
         var text = input.value.trim();
-        if (!text || !S.curServer || !S.curChannel) return;
+        var base = msgBasePath();
+        if (!text) return;
+        if (!base) { toast("Open a channel or a DM first."); return; }
         input.value = "";
         autoGrow(input);
         $("sendBtn").disabled = true;
-        db.ref("messages/" + S.curServer + "/" + S.curChannel).push({
+        clearMyTyping();
+        var payload = {
           uid: S.uid,
           nickname: S.profile.nickname,
           avatar: S.profile.avatar,
           text: text,
           ts: firebase.database.ServerValue.TIMESTAMP
+        };
+        if (S.replyTo) {
+          payload.replyTo = { mid: S.replyTo.mid, uid: S.replyTo.uid, nickname: S.replyTo.nickname, text: String(S.replyTo.text || "").slice(0, 140) };
+          setReplyTo(null);
+        }
+        db.ref(base).push(payload).then(function () {
+          if (S.view === "dm" && S.curDM && S.curPeer) {
+            var updates = {};
+            updates["dmMeta/" + S.curDM + "/lastTs"] = firebase.database.ServerValue.TIMESTAMP;
+            updates["dmMeta/" + S.curDM + "/lastText"] = text.slice(0, 140);
+            updates["userDMs/" + S.uid + "/" + S.curDM + "/updatedAt"] = firebase.database.ServerValue.TIMESTAMP;
+            updates["userDMs/" + S.curPeer.uid + "/" + S.curDM + "/updatedAt"] = firebase.database.ServerValue.TIMESTAMP;
+            db.ref().update(updates).catch(function () {});
+          }
         }).catch(function () { toast("Message failed to send. Check your connection."); });
         var box = $("messages");
         box.scrollTop = box.scrollHeight;
@@ -986,6 +1371,179 @@
       function autoGrow(ta) {
         ta.style.height = "auto";
         ta.style.height = Math.min(ta.scrollHeight, 140) + "px";
+      }
+
+      /* ================= Phase 2: typing indicator ================= */
+      var myTypingRef = null, myTypingTimer = null, lastTypingPoke = 0;
+      function pokeTyping() {
+        var p = typingPath();
+        if (!p || !S.uid) return;
+        var ref = db.ref(p + "/" + S.uid);
+        if (!myTypingRef || myTypingRef.toString() !== ref.toString()) {
+          clearMyTyping();
+          myTypingRef = ref;
+          try { myTypingRef.onDisconnect().remove(); } catch (e) {}
+        }
+        var now = Date.now();
+        if (now - lastTypingPoke > 2500) {
+          lastTypingPoke = now;
+          myTypingRef.set({ nickname: S.profile.nickname, ts: firebase.database.ServerValue.TIMESTAMP }).catch(function () {});
+        }
+        clearTimeout(myTypingTimer);
+        myTypingTimer = setTimeout(clearMyTyping, 3000);
+      }
+      function clearMyTyping() {
+        clearTimeout(myTypingTimer);
+        if (myTypingRef) {
+          try { myTypingRef.onDisconnect().cancel(); } catch (e) {}
+          myTypingRef.remove().catch(function () {});
+          myTypingRef = null;
+        }
+        lastTypingPoke = 0;
+      }
+      function renderTyping() {
+        var bar = $("typingBar");
+        if (!bar) return;
+        var now = Date.now();
+        var names = [];
+        Object.keys(S.typing || {}).forEach(function (uid) {
+          if (uid === S.uid) return;
+          var t = S.typing[uid];
+          if (t && t.nickname && (now - (t.ts || 0)) < 6000) names.push(t.nickname);
+        });
+        names.sort();
+        if (!names.length) { bar.classList.remove("show"); bar.innerHTML = ""; return; }
+        var label;
+        if (names.length === 1) label = "<strong>" + esc(names[0]) + "</strong>&nbsp;is typing...";
+        else if (names.length === 2) label = "<strong>" + esc(names[0]) + "</strong>&nbsp;and&nbsp;<strong>" + esc(names[1]) + "</strong>&nbsp;are typing...";
+        else label = "Several people are typing...";
+        bar.innerHTML = '<span class="typing-dots"><i></i><i></i><i></i></span><span>' + label + "</span>";
+        bar.classList.add("show");
+      }
+      setInterval(renderTyping, 2000);
+
+      /* ================= Phase 2: reply ================= */
+      function setReplyTo(r) {
+        S.replyTo = r;
+        var bar = $("replyBar");
+        if (!r) { bar.classList.remove("show"); return; }
+        $("replyBarText").innerHTML = "Replying to <strong>" + esc(r.nickname) + "</strong>: " + esc(String(r.text || "").slice(0, 80));
+        bar.classList.add("show");
+        $("msgInput").focus();
+      }
+
+      /* ================= Phase 2: reactions ================= */
+      function toggleReaction(mid, key) {
+        var base = msgBasePath();
+        if (!base || !mid) return;
+        var m = S.curMsgs[mid];
+        var mine = !!(m && m.reactions && m.reactions[key] && m.reactions[key][S.uid]);
+        var ref = db.ref(base + "/" + mid + "/reactions/" + key + "/" + S.uid);
+        if (mine) ref.remove().catch(function () { toast("Could not update the reaction."); });
+        else ref.set(true).catch(function () { toast("Could not add the reaction."); });
+      }
+      var pickerMid = null;
+      function hideReactPicker() { $("reactPicker").classList.add("hidden"); pickerMid = null; }
+      function showReactPicker(mid, anchorEl) {
+        var picker = $("reactPicker");
+        pickerMid = mid;
+        picker.innerHTML = REACTIONS.map(function (r) {
+          return '<button type="button" data-pick="' + r.k + '" title="React with ' + r.k + '">' + r.e + "</button>";
+        }).join("");
+        picker.classList.remove("hidden");
+        var rect = anchorEl.getBoundingClientRect();
+        var pw = 244, ph = 48;
+        var x = Math.min(Math.max(8, rect.left + rect.width / 2 - pw / 2), window.innerWidth - pw - 8);
+        var y = rect.top - ph - 10;
+        if (y < 8) y = rect.bottom + 10;
+        picker.style.left = x + "px";
+        picker.style.top = y + "px";
+        var btns = picker.querySelectorAll("[data-pick]");
+        for (var i = 0; i < btns.length; i++) {
+          btns[i].addEventListener("click", function () {
+            toggleReaction(pickerMid, this.getAttribute("data-pick"));
+            hideReactPicker();
+          });
+        }
+      }
+
+      /* ================= Phase 2: edit & delete ================= */
+      function startEdit(mid, msgEl) {
+        var m = S.curMsgs[mid];
+        if (!m || m.uid !== S.uid) return;
+        var body = msgEl.querySelector(".msg-body");
+        if (!body || body.querySelector(".edit-box")) return;
+        var original = body.innerHTML;
+        body.innerHTML = '<div class="edit-box"><textarea rows="2" maxlength="2000">' + esc(m.text) + "</textarea>" +
+          '<div class="edit-hint">escape to <button type="button" data-edit-cancel>cancel</button> • enter to <button type="button" data-edit-save>save</button></div></div>';
+        var ta = body.querySelector("textarea");
+        ta.focus();
+        ta.setSelectionRange(ta.value.length, ta.value.length);
+        autoGrow(ta);
+        ta.addEventListener("input", function () { autoGrow(ta); });
+        function cancel() { body.innerHTML = original; }
+        function save() {
+          var text = ta.value.trim();
+          if (!text) { toast("A message can't be empty — delete it instead."); return; }
+          if (text === m.text) { cancel(); return; }
+          var base = msgBasePath();
+          db.ref(base + "/" + mid).update({ text: text, editedAt: firebase.database.ServerValue.TIMESTAMP })
+            .catch(function () { toast("Could not save the edit."); cancel(); });
+          // The messages listener re-renders with the "(edited)" marker.
+        }
+        body.querySelector("[data-edit-cancel]").addEventListener("click", cancel);
+        body.querySelector("[data-edit-save]").addEventListener("click", save);
+        ta.addEventListener("keydown", function (e) {
+          if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); save(); }
+          if (e.key === "Escape") { e.stopPropagation(); cancel(); }
+        });
+      }
+      function confirmDelete(mid) {
+        var m = S.curMsgs[mid];
+        if (!m || m.uid !== S.uid) return;
+        openModal(
+          '<button class="close-x" id="mClose" aria-label="Close">✕</button>' +
+          "<h2>Delete message</h2>" +
+          '<p class="sub">Are you sure you want to delete this message? This can\'t be undone.</p>' +
+          '<div style="background:var(--bg-deepest);border-radius:6px;padding:12px 14px;font-size:14px;color:var(--text);max-height:120px;overflow:hidden;">' + esc(String(m.text).slice(0, 200)) + "</div>" +
+          '<button class="primary-btn" id="doDeleteMsg" style="background:var(--red);">Delete</button>' +
+          '<button class="secondary-btn" id="cancelDeleteMsg" style="width:100%;padding:11px;margin-top:10px;">Cancel</button>'
+        );
+        $("mClose").addEventListener("click", closeModal);
+        $("cancelDeleteMsg").addEventListener("click", closeModal);
+        $("doDeleteMsg").addEventListener("click", function () {
+          var base = msgBasePath();
+          closeModal();
+          if (!base) return;
+          db.ref(base + "/" + mid).remove().then(function () {
+            toast("Message deleted.");
+          }).catch(function () { toast("Could not delete the message."); });
+        });
+      }
+
+      /* Message-area clicks (delegation): reaction chips, reply, edit, delete, picker. */
+      function initPhase2() {
+        $("messages").addEventListener("click", function (e) {
+          var btn = e.target.closest ? e.target.closest("[data-action]") : null;
+          if (!btn) return;
+          var mid = btn.getAttribute("data-mid");
+          var action = btn.getAttribute("data-action");
+          if (!mid) return;
+          if (action === "react-toggle") toggleReaction(mid, btn.getAttribute("data-emoji"));
+          else if (action === "add-react") { if (pickerMid === mid && !$("reactPicker").classList.contains("hidden")) hideReactPicker(); else showReactPicker(mid, btn); }
+          else if (action === "reply") {
+            var m = S.curMsgs[mid];
+            if (m) setReplyTo({ mid: mid, uid: m.uid, nickname: m.nickname || "Unknown", text: m.text || "" });
+          }
+          else if (action === "edit") { var msgEl = btn.closest(".msg"); if (msgEl) startEdit(mid, msgEl); }
+          else if (action === "delete") confirmDelete(mid);
+        });
+        document.addEventListener("mousedown", function (e) {
+          var picker = $("reactPicker");
+          if (picker.classList.contains("hidden")) return;
+          if (!picker.contains(e.target) && !(e.target.closest && e.target.closest('[data-action="add-react"]'))) hideReactPicker();
+        });
+        $("replyCancelBtn").addEventListener("click", function () { setReplyTo(null); });
       }
 
       /* ================= App entry ================= */
@@ -1000,6 +1558,42 @@
         myAv.innerHTML = a.e + '<span class="presence-dot"></span>';
         $("myName").textContent = S.profile.nickname;
 
+        // Global presence (used for the DM list's online dots)
+        var myUserRef = db.ref("users/" + S.uid);
+        myUserRef.update({ online: true });
+        myUserRef.onDisconnect().update({ online: false, lastSeen: firebase.database.ServerValue.TIMESTAMP });
+
+        // My DM list (userDMs/{uid}) — drives the sidebar "Direct Messages" section
+        refs.userDMs = db.ref("userDMs/" + S.uid);
+        refs.userDMs.on("value", function (snap) {
+          S.dmList = snap.val() || {};
+          // Keep a presence listener on each DM partner (users/{peerUid})
+          var seen = {};
+          Object.keys(S.dmList).forEach(function (dmId) {
+            var peer = S.dmList[dmId].peerUid;
+            if (!peer || peer === S.uid) return;
+            seen[peer] = true;
+            if (!refs.peerPresence[peer]) {
+              var pr = db.ref("users/" + peer);
+              refs.peerPresence[peer] = pr;
+              pr.on("value", function (ps) {
+                var v = ps.val() || {};
+                var on = !!v.online;
+                if (S.peerOnline[peer] !== on) { S.peerOnline[peer] = on; renderDMList(); }
+                // Keep stale DM entries' names/avatars fresh from the profile
+                if (S.curPeer && S.curPeer.uid === peer && v.nickname) {
+                  S.curPeer.nickname = v.nickname;
+                  if (typeof v.avatar === "number") S.curPeer.avatar = v.avatar;
+                }
+              });
+            }
+          });
+          Object.keys(refs.peerPresence).forEach(function (peer) {
+            if (!seen[peer]) { refs.peerPresence[peer].off(); delete refs.peerPresence[peer]; delete S.peerOnline[peer]; }
+          });
+          renderDMList();
+        });
+
         refs.userServers = db.ref("userServers/" + S.uid);
         refs.userServers.on("value", function (snap) {
           S.myServers = snap.val() || {};
@@ -1008,7 +1602,7 @@
             setPresence(sid);
           });
           renderRail();
-          if (!S.curServer) {
+          if (!S.curServer && S.view !== "dm") {
             var ids = Object.keys(S.myServers);
             if (ids.length) {
               selectServer(ids[0]);
@@ -1188,6 +1782,7 @@
       $("msgInput").addEventListener("input", function () {
         autoGrow(this);
         $("sendBtn").disabled = !this.value.trim();
+        if (this.value.trim()) pokeTyping(); else clearMyTyping();
       });
       $("sendBtn").disabled = true;
       $("addChannelBtn").addEventListener("click", function () {
@@ -1201,11 +1796,15 @@
       $("welcomeCreate").addEventListener("click", function () { openAddServerModal("create"); });
       $("welcomeJoin").addEventListener("click", function () { openAddServerModal("join"); });
       $("signOutBtn").addEventListener("click", function () {
+        clearMyTyping();
+        var myUserRef = db.ref("users/" + S.uid);
+        myUserRef.onDisconnect().cancel();
         var jobs = Object.keys(presenceSet).map(function (sid) {
           var ref = db.ref("members/" + sid + "/" + S.uid);
           ref.onDisconnect().cancel();
           return ref.update({ online: false, lastSeen: firebase.database.ServerValue.TIMESTAMP });
         });
+        jobs.push(myUserRef.update({ online: false, lastSeen: firebase.database.ServerValue.TIMESTAMP }));
         Promise.all(jobs).catch(function () {}).then(function () {
           return auth.signOut();
         }).catch(function () {}).then(function () {
@@ -1222,6 +1821,7 @@
       });
       $("scrim").addEventListener("click", closeOverlays);
 
+      initPhase2();
       boot();
     </script>
   </body>
