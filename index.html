@@ -677,14 +677,18 @@
         curDM: null,              // dmId when view === "dm"
         curPeer: null,            // { uid, nickname, avatar } of the DM partner
         dmList: {},               // dmId -> { peerUid, peerNickname, peerAvatar, updatedAt }
-        peerOnline: {},           // uid -> bool (global presence from users/{uid})
+        peerOnline: {},           // uid -> bool (derived: online if ANY source says so)
+        peerOnlineFromUsers: {},  // uid -> bool (users/{uid}/online listener)
+        peerOnlineFromMembers: {}, // uid -> bool (members/{sid}/{uid}/online of the open server)
         curMsgs: {},              // mid -> message record for the open conversation
+        dmReactions: {},          // DM only: mid -> { emojiKey -> { uid -> true } }
         replyTo: null,            // { mid, uid, nickname, text } being replied to
         typing: {},               // uid -> { nickname, ts } for the open conversation
-        typingSeen: {}            // uid -> local time we last saw that uid's typing ts change
+        typingSeen: {},           // uid -> local time we last saw that uid's typing ts change
+        typingBase: null          // base path of the open conversation's typing nodes
       };
 
-      var refs = { userServers: null, channels: null, messages: null, members: null, meta: {}, userDMs: null, typing: null, peerPresence: {}, dmMetaById: {} };
+      var refs = { userServers: null, channels: null, messages: null, members: null, meta: {}, userDMs: null, typing: null, typingUsers: {}, peerPresence: {}, dmMetaById: {}, dmReactions: null };
       var presenceSet = {};
 
       /* ================= Phase 2 — Firebase data layout =================
@@ -707,8 +711,25 @@
                                        dmMeta — Firebase rules cannot validate a
                                        dynamic memberUids query, so that approach
                                        was removed.)
-         Reactions (stored on the message itself, works for channels + DMs):
-           .../messages/{mid}/reactions/{emojiKey}/{uid} = true
+         Reactions:
+           Channels — stored on the message itself:
+             messages/{sid}/{cid}/{mid}/reactions/{emojiKey}/{uid} = true
+             (the channel rules carry a dedicated reactions sub-rule, so any
+             server member may react to anyone's message.)
+           DMs — stored under the conversation's shared metadata instead:
+             dmMeta/{dmId}/reactions/{mid}/{emojiKey}/{uid} = true
+             WHY: the dmMessages/{dmId}/{mid} write rule only lets the
+             message's AUTHOR write that node (create / edit / delete), and
+             the published DM rules have no reactions sub-rule under it —
+             so a reaction written onto someone else's DM message was
+             rejected with PERMISSION_DENIED and DM reactions silently
+             never landed (reacting to your OWN DM message worked, which
+             made it look random). dmMeta/{dmId} is writable by BOTH
+             conversation members under the same published rules
+             (memberUids check), so reactions stored there work for both
+             sides with no rules change. The render code merges these
+             reactions (plus any legacy on-message ones) into each DM
+             message before drawing its chips.
            emojiKey is one of REACTIONS[].k (thumbsup, heart, laugh, wow, sad, angry)
          Edit / delete:
            edit   -> update .../{mid} with { text, editedAt } (editedAt renders as "(edited)")
@@ -720,6 +741,19 @@
          older than ~6s, and writers remove their node when idle / on disconnect):
            typing/channels/{sid}/{cid}/{uid} = { nickname, ts }
            typing/dms/{dmId}/{uid}           = { nickname, ts }
+           READ SIDE — IMPORTANT: readers listen to each user's node
+           INDIVIDUALLY (typing/.../{uid}), never to the parent
+           collection. The published rules grant ".read" only at the
+           {uid} leaf (".write" is there too), and in Firebase a read
+           rule at a child does NOT grant reading its parent — so the
+           old single listener on typing/channels/{sid}/{cid} (or
+           typing/dms/{dmId}) was cancelled with PERMISSION_DENIED and
+           "X is typing" never arrived, even though the writer's own
+           set() at the leaf succeeded. Per-user listeners match the
+           leaf rule exactly (any server member / DM member may read
+           another member's leaf), so no rules change is needed.
+           Channel candidates come from the open server's member list;
+           the DM candidate is just the peer.
          Global presence for the DM list (extends the users/{uid} profile):
            users/{uid}/online = true/false, users/{uid}/lastSeen
       ==================================================================== */
@@ -1186,6 +1220,23 @@
         ids.forEach(function (mid) {
           var m = S.curMsgs[mid];
           if (!m || typeof m.text !== "string") return;
+          if (S.view === "dm") {
+            // Merge the shared-metadata DM reactions (see the data-layout
+            // note) into this message so its chips render exactly like
+            // channel reactions. Legacy reactions stored on the message
+            // itself are kept and unioned in.
+            var shared = S.dmReactions[mid];
+            if (shared) {
+              var merged = {};
+              if (m.reactions) Object.keys(m.reactions).forEach(function (k) { merged[k] = Object.assign({}, m.reactions[k]); });
+              Object.keys(shared).forEach(function (k) {
+                if (!merged[k]) merged[k] = {};
+                var uids = shared[k] || {};
+                Object.keys(uids).forEach(function (u) { if (uids[u]) merged[k][u] = true; });
+              });
+              m = Object.assign({}, m, { reactions: merged });
+            }
+          }
           var grouped = prevUid === m.uid && !m.replyTo && (m.ts - prevTs) < 5 * 60 * 1000;
           var a = avatarOf(m.avatar);
           if (grouped) {
@@ -1244,7 +1295,21 @@
         refs.members.on("value", function (snap) {
           if (S.curServer !== sid) return;
           S.members = snap.val() || {};
+          // Feed the DM list's second presence source: this member
+          // list is live and was already showing peers online
+          // correctly, so mirror it into the derived DM dots and
+          // re-render the DM list whenever it changes.
+          S.peerOnlineFromMembers = {};
+          Object.keys(S.members).forEach(function (uid) {
+            if (uid !== S.uid) S.peerOnlineFromMembers[uid] = !!(S.members[uid] && S.members[uid].online);
+          });
+          recomputeAllPeerOnline();
           renderMembers();
+          // Channel typing candidates are the server's members: keep
+          // the per-user typing listeners in step with this list (it
+          // can arrive after the channel was opened, and members can
+          // join later). No-op in DM view / before a channel opens.
+          if (S.view === "server" && S.typingBase) syncTypingListeners();
         });
 
         refs.channels = db.ref("channels/" + sid);
@@ -1277,11 +1342,79 @@
         attachConversation("messages/" + S.curServer + "/" + cid, "typing/channels/" + S.curServer + "/" + cid);
       }
 
+      /* ---------- Phase 2: typing — per-user listeners ----------
+         See the data-layout note: the typing rules live at the {uid}
+         leaf, so a listener on the parent collection is denied.
+         One small listener per candidate user is attached instead. */
+      var typingListenErrAt = 0;
+      function typingCandidates() {
+        var out = [];
+        if (S.view === "dm") {
+          if (S.curPeer && S.curPeer.uid && S.curPeer.uid !== S.uid) out.push(S.curPeer.uid);
+        } else {
+          Object.keys(S.members || {}).forEach(function (uid) {
+            if (uid !== S.uid) out.push(uid);
+          });
+        }
+        return out;
+      }
+      function detachTypingListeners() {
+        Object.keys(refs.typingUsers || {}).forEach(function (uid) {
+          try { refs.typingUsers[uid].off(); } catch (e) {}
+        });
+        refs.typingUsers = {};
+        if (refs.typing) { try { refs.typing.off(); } catch (e) {} refs.typing = null; }
+      }
+      function syncTypingListeners() {
+        var base = S.typingBase;
+        if (!base || !db) { detachTypingListeners(); return; }
+        var want = {};
+        typingCandidates().forEach(function (uid) { want[uid] = true; });
+        // Drop listeners for users who are no longer candidates.
+        Object.keys(refs.typingUsers || {}).forEach(function (uid) {
+          if (!want[uid]) {
+            try { refs.typingUsers[uid].off(); } catch (e) {}
+            delete refs.typingUsers[uid];
+            delete S.typing[uid];
+            delete S.typingSeen[uid];
+          }
+        });
+        // Attach a leaf listener for each new candidate.
+        Object.keys(want).forEach(function (uid) {
+          if (refs.typingUsers[uid]) return;
+          var ref = db.ref(base + "/" + uid);
+          refs.typingUsers[uid] = ref;
+          ref.on("value", function (snap) {
+            if (S.typingBase !== base) return;
+            var val = snap.val();
+            if (!val) {
+              if (S.typing[uid]) { delete S.typing[uid]; delete S.typingSeen[uid]; renderTyping(); }
+              return;
+            }
+            var prev = S.typing[uid];
+            if (!prev || prev.ts !== val.ts) S.typingSeen[uid] = Date.now();
+            S.typing[uid] = val;
+            renderTyping();
+          }, function (err) {
+            // A denied leaf read means the rules in the Console are
+            // older than the published Phase 2 set — say so (throttled)
+            // instead of failing silently like the old parent listener.
+            if (Date.now() - typingListenErrAt > 30000) {
+              typingListenErrAt = Date.now();
+              dbErrToast(err, "The typing indicator");
+            }
+          });
+        });
+        renderTyping();
+      }
       /* ---------- Phase 2: conversation switching (channels + DMs) ---------- */
       function detachConversation() {
         clearMyTyping();
         if (refs.messages) { refs.messages.off(); refs.messages = null; }
-        if (refs.typing) { refs.typing.off(); refs.typing = null; }
+        detachTypingListeners();
+        S.typingBase = null;
+        if (refs.dmReactions) { refs.dmReactions.off(); refs.dmReactions = null; }
+        S.dmReactions = {};
         S.typing = {};
         S.typingSeen = {};
         renderTyping();
@@ -1299,22 +1432,23 @@
           if (msgBasePath() !== path) return;
           renderMessages(snap);
         });
-        refs.typing = db.ref(typingP);
-        refs.typing.on("value", function (snap) {
-          if (typingPath() !== typingP) return;
-          var fresh = snap.val() || {};
-          // Remember (in local time) when each person's typing timestamp
-          // last changed — renderTyping uses this as a second freshness
-          // signal so a reader phone whose clock runs ahead of the server
-          // doesn't discard live typing entries as "stale".
-          Object.keys(fresh).forEach(function (uid) {
-            var prev = S.typing[uid];
-            if (!prev || prev.ts !== (fresh[uid] && fresh[uid].ts)) S.typingSeen[uid] = Date.now();
+        if (S.view === "dm" && S.curDM) {
+          // DM reactions live under dmMeta/{dmId}/reactions (see the
+          // data-layout note): listen there and re-render the open
+          // conversation whenever either member adds/removes a reaction.
+          var dmIdForReactions = S.curDM;
+          refs.dmReactions = db.ref("dmMeta/" + dmIdForReactions + "/reactions");
+          refs.dmReactions.on("value", function (snap) {
+            if (S.view !== "dm" || S.curDM !== dmIdForReactions) return;
+            S.dmReactions = snap.val() || {};
+            if (Object.keys(S.curMsgs).length) renderConversation(S.curMsgs);
           });
-          Object.keys(S.typingSeen).forEach(function (uid) { if (!fresh[uid]) delete S.typingSeen[uid]; });
-          S.typing = fresh;
-          renderTyping();
-        });
+        }
+        // Typing: per-user leaf listeners (see syncTypingListeners) —
+        // a single listener on typingP itself is denied by the rules,
+        // whose ".read" sits at the {uid} leaf only.
+        S.typingBase = typingP;
+        syncTypingListeners();
       }
       /* Sidebar + header chrome for server view vs DM view. */
       function applyViewChrome() {
@@ -1521,6 +1655,25 @@
       function toggleReaction(mid, key) {
         var base = msgBasePath();
         if (!base || !mid) return;
+        if (S.view === "dm" && S.curDM) {
+          // DM reactions are stored under dmMeta/{dmId}/reactions — the
+          // on-message path under dmMessages is author-only in the rules,
+          // which blocked reacting to the OTHER person's DM messages.
+          // "Mine" is judged on the merged view (shared + legacy), and
+          // toggling off clears both locations so an old on-message
+          // reaction can never get stuck on screen.
+          var sharedMine = !!(S.dmReactions[mid] && S.dmReactions[mid][key] && S.dmReactions[mid][key][S.uid]);
+          var mDm = S.curMsgs[mid];
+          var legacyMine = !!(mDm && mDm.reactions && mDm.reactions[key] && mDm.reactions[key][S.uid]);
+          var sharedRef = db.ref("dmMeta/" + S.curDM + "/reactions/" + mid + "/" + key + "/" + S.uid);
+          if (sharedMine || legacyMine) {
+            sharedRef.remove().catch(function (err) { dbErrToast(err, "Updating the reaction"); });
+            if (legacyMine) db.ref(base + "/" + mid + "/reactions/" + key + "/" + S.uid).remove().catch(function () {});
+          } else {
+            sharedRef.set(true).catch(function (err) { dbErrToast(err, "Adding the reaction"); });
+          }
+          return;
+        }
         var m = S.curMsgs[mid];
         var mine = !!(m && m.reactions && m.reactions[key] && m.reactions[key][S.uid]);
         var ref = db.ref(base + "/" + mid + "/reactions/" + key + "/" + S.uid);
@@ -1598,9 +1751,13 @@
         $("cancelDeleteMsg").addEventListener("click", closeModal);
         $("doDeleteMsg").addEventListener("click", function () {
           var base = msgBasePath();
+          var dmIdAtDelete = S.view === "dm" ? S.curDM : null;
           closeModal();
           if (!base) return;
           db.ref(base + "/" + mid).remove().then(function () {
+            // Clean up the deleted DM message's reactions from the
+            // shared-metadata store so they don't linger orphaned.
+            if (dmIdAtDelete) db.ref("dmMeta/" + dmIdAtDelete + "/reactions/" + mid).remove().catch(function () {});
             toast("Message deleted.");
           }).catch(function (err) { dbErrToast(err, "Deleting the message"); });
         });
@@ -1656,18 +1813,26 @@
             refs.peerPresence[peer] = pr;
             pr.on("value", function (ps) {
               var v = ps.val() || {};
-              var on = !!v.online;
-              if (S.peerOnline[peer] !== on) { S.peerOnline[peer] = on; renderDMList(); }
+              // users/{peer}/online is the primary DM-list signal:
+              // record it in its own source map and re-derive the dot
+              // (the member-list source may still say online).
+              S.peerOnlineFromUsers[peer] = !!v.online;
+              recomputePeerOnline(peer);
               // Keep stale DM entries' names/avatars fresh from the profile
               if (S.curPeer && S.curPeer.uid === peer && v.nickname) {
                 S.curPeer.nickname = v.nickname;
                 if (typeof v.avatar === "number") S.curPeer.avatar = v.avatar;
               }
+            }, function () {
+              // Read failed (e.g. rules): don't leave the dot stuck on a
+              // default — the member-presence source still feeds it via
+              // recomputePeerOnline from the members listener.
+              recomputePeerOnline(peer);
             });
           }
         });
         Object.keys(refs.peerPresence).forEach(function (peer) {
-          if (!seen[peer]) { refs.peerPresence[peer].off(); delete refs.peerPresence[peer]; delete S.peerOnline[peer]; }
+          if (!seen[peer]) { refs.peerPresence[peer].off(); delete refs.peerPresence[peer]; delete S.peerOnlineFromUsers[peer]; recomputePeerOnline(peer); if (!S.peerOnlineFromMembers[peer]) delete S.peerOnline[peer]; }
         });
       }
 
@@ -1717,6 +1882,38 @@
         });
       }
 
+      /* Write my global presence (users/{uid}/online) and arm the
+         onDisconnect that flips it off when this client goes away. */
+      var myPresenceArmed = false;
+      function publishMyPresence() {
+        if (!S.uid || !db) return;
+        var myUserRef = db.ref("users/" + S.uid);
+        myUserRef.update({ online: true, lastSeen: firebase.database.ServerValue.TIMESTAMP })
+          .catch(function (err) { dbErrToast(err, "Publishing your online status"); });
+        if (!myPresenceArmed) {
+          myPresenceArmed = true;
+          try { myUserRef.onDisconnect().update({ online: false, lastSeen: firebase.database.ServerValue.TIMESTAMP }); } catch (e) {}
+        }
+      }
+      /* The DM list's dot is derived from TWO live sources and shows
+         online if EITHER says online: users/{uid}/online (global) and
+         members/{sid}/{uid}/online (the open server's member list,
+         which was already showing the peer online correctly). Taking
+         the OR means one stale/wiped source can no longer paint an
+         online peer gray on its own. */
+      function recomputePeerOnline(peer) {
+        if (!peer) return;
+        var on = !!(S.peerOnlineFromUsers[peer] || S.peerOnlineFromMembers[peer]);
+        if (S.peerOnline[peer] !== on) { S.peerOnline[peer] = on; renderDMList(); }
+      }
+      function recomputeAllPeerOnline() {
+        var all = {};
+        Object.keys(S.peerOnlineFromUsers).forEach(function (u) { all[u] = true; });
+        Object.keys(S.peerOnlineFromMembers).forEach(function (u) { all[u] = true; });
+        Object.keys(S.dmList).forEach(function (dmId) { var p = S.dmList[dmId].peerUid; if (p) all[p] = true; });
+        Object.keys(all).forEach(recomputePeerOnline);
+      }
+
       /* ================= App entry ================= */
       function enterApp() {
         if (S.entered) return;
@@ -1729,10 +1926,12 @@
         myAv.innerHTML = a.e + '<span class="presence-dot"></span>';
         $("myName").textContent = S.profile.nickname;
 
-        // Global presence (used for the DM list's online dots)
-        var myUserRef = db.ref("users/" + S.uid);
-        myUserRef.update({ online: true });
-        myUserRef.onDisconnect().update({ online: false, lastSeen: firebase.database.ServerValue.TIMESTAMP });
+        // Global presence (used for the DM list's online dots).
+        // publishMyPresence is re-asserted when the tab becomes visible
+        // again (below) so a wiped/dropped online flag self-heals instead
+        // of leaving the user shown offline in DM lists for the whole
+        // session. Its failure is no longer silent either.
+        publishMyPresence();
 
         // DM discovery — ONLY through my own userDMs/{uid} node. It holds
         // the dmIds I belong to, and each entry already carries the peer's
@@ -1777,9 +1976,14 @@
           }
         });
 
-        // Keep presence fresh when the tab becomes visible again
+        // Keep presence fresh when the tab becomes visible again —
+        // BOTH the per-server member presence AND the global
+        // users/{uid} presence behind the DM list's dots. (Previously
+        // only the member presence was refreshed here, so the global
+        // flag could stay stale/offline all session.)
         document.addEventListener("visibilitychange", function () {
           if (document.visibilityState === "visible") {
+            publishMyPresence();
             Object.keys(presenceSet).forEach(function (sid) {
               db.ref("members/" + sid + "/" + S.uid).update({ online: true, lastSeen: firebase.database.ServerValue.TIMESTAMP });
             });
@@ -1821,7 +2025,13 @@
         }
         function saveProfile(uid) {
           var profile = { nickname: nickname, avatar: selectedAvatar };
-          db.ref("users/" + uid).set(profile).then(function () {
+          // update(), NOT set(): set() replaces the whole users/{uid}
+          // node and WIPES the online/lastSeen presence fields — and if
+          // the app had already auto-entered (restored session), enterApp
+          // would not run again to restore them, leaving this user shown
+          // OFFLINE in everyone's DM list while the member list (a
+          // separate presence node) still showed them online.
+          db.ref("users/" + uid).update(profile).then(function () {
             S.uid = uid; S.profile = profile;
             enterApp();
           }).catch(function () { fail("Signed in, but saving your profile failed. Please try again."); });
@@ -1940,6 +2150,13 @@
         autoGrow(this);
         $("sendBtn").disabled = !this.value.trim();
         if (this.value.trim()) pokeTyping(); else clearMyTyping();
+      });
+      // Fallback for mobile / IME keyboards that don't fire "input"
+      // for every keystroke: keyup also pokes the typing node (the
+      // poke itself is throttled to one write per 2s, so this is cheap).
+      $("msgInput").addEventListener("keyup", function (e) {
+        if (e.key === "Enter") return;
+        if (this.value.trim()) pokeTyping();
       });
       $("sendBtn").disabled = true;
       $("addChannelBtn").addEventListener("click", function () {
