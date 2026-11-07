@@ -400,7 +400,18 @@
         border: 1px solid rgba(255, 255, 255, 0.09); border-radius: 6px;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35); overflow: hidden;
       }
-      .msg:hover .msg-actions, .msg:focus-within .msg-actions { display: flex; }
+      .msg:hover .msg-actions, .msg:focus-within .msg-actions, .msg.show-actions .msg-actions { display: flex; }
+      /* Touch devices have no hover: without this the reaction / reply /
+         edit / delete buttons can never be tapped on a phone. Keep the
+         action bar permanently visible (compact) on coarse pointers. */
+      @media (hover: none), (pointer: coarse) {
+        .msg-actions {
+          display: flex; top: -11px; right: 10px;
+          background: var(--bg-alt); opacity: 0.97;
+        }
+        .msg-actions button { width: 34px; height: 32px; }
+        .msg-actions svg { width: 18px; height: 18px; }
+      }
       .msg-actions button {
         width: 30px; height: 28px; display: flex; align-items: center; justify-content: center;
         color: var(--text-muted);
@@ -669,20 +680,33 @@
         peerOnline: {},           // uid -> bool (global presence from users/{uid})
         curMsgs: {},              // mid -> message record for the open conversation
         replyTo: null,            // { mid, uid, nickname, text } being replied to
-        typing: {}                // uid -> { nickname, ts } for the open conversation
+        typing: {},               // uid -> { nickname, ts } for the open conversation
+        typingSeen: {}            // uid -> local time we last saw that uid's typing ts change
       };
 
-      var refs = { userServers: null, channels: null, messages: null, members: null, meta: {}, userDMs: null, typing: null, peerPresence: {} };
+      var refs = { userServers: null, channels: null, messages: null, members: null, meta: {}, userDMs: null, typing: null, peerPresence: {}, dmMetaById: {} };
       var presenceSet = {};
 
       /* ================= Phase 2 — Firebase data layout =================
          DMs:
            dmId = the two uids sorted alphabetically, joined with "_"
-           dmMeta/{dmId}            -> { members: { uid: { nickname, avatar } }, createdAt, lastTs, lastText }
+           dmMeta/{dmId}            -> { members: { uid: { nickname, avatar } },
+                                       memberUids: { uid: true } (membership flags —
+                                       rules check these on an INDIVIDUAL
+                                       dmMeta/{dmId} read, so only a member of
+                                       that conversation can read it),
+                                       createdAt, lastTs, lastText }
            dmMessages/{dmId}/{mid}  -> same fields as channel messages (uid, nickname, avatar, text, ts)
                                        plus optional editedAt and replyTo (see below)
            userDMs/{uid}/{dmId}     -> { peerUid, peerNickname, peerAvatar, updatedAt }
-                                       (per-user DM list shown in the sidebar)
+                                       (per-user DM list shown in the sidebar.
+                                       DM discovery works ONLY through this node:
+                                       read userDMs/{own uid} to get the dmIds,
+                                       then read each dmMeta/{dmId} individually.
+                                       There is NO parent-level query/listener on
+                                       dmMeta — Firebase rules cannot validate a
+                                       dynamic memberUids query, so that approach
+                                       was removed.)
          Reactions (stored on the message itself, works for channels + DMs):
            .../messages/{mid}/reactions/{emojiKey}/{uid} = true
            emojiKey is one of REACTIONS[].k (thumbsup, heart, laugh, wow, sad, angry)
@@ -767,6 +791,22 @@
         t.classList.add("show");
         clearTimeout(toastTimer);
         toastTimer = setTimeout(function () { t.classList.remove("show"); }, 2400);
+      }
+      /* Phase 2 writes must never fail silently (they used to be swallowed,
+         which made reactions / DMs / typing / delete look "broken" with no
+         clue). Surface the real failure — especially PERMISSION_DENIED,
+         which means the database rules rejected the write. */
+      function isDenied(err) {
+        if (!err) return false;
+        var s = String(err.code || "") + " " + String(err.message || "");
+        return /PERMISSION_DENIED|permission/i.test(s);
+      }
+      function dbErrToast(err, what) {
+        if (isDenied(err)) {
+          toast(what + " was blocked by the database rules (PERMISSION_DENIED). Publish the updated Phase 2 rules in Firebase Console → Realtime Database → Rules.");
+        } else {
+          toast(what + " failed. Check your connection and try again.");
+        }
       }
       function closeOverlays() {
         $("sidebar").classList.remove("open");
@@ -1243,6 +1283,7 @@
         if (refs.messages) { refs.messages.off(); refs.messages = null; }
         if (refs.typing) { refs.typing.off(); refs.typing = null; }
         S.typing = {};
+        S.typingSeen = {};
         renderTyping();
         setReplyTo(null);
         hideReactPicker();
@@ -1261,7 +1302,17 @@
         refs.typing = db.ref(typingP);
         refs.typing.on("value", function (snap) {
           if (typingPath() !== typingP) return;
-          S.typing = snap.val() || {};
+          var fresh = snap.val() || {};
+          // Remember (in local time) when each person's typing timestamp
+          // last changed — renderTyping uses this as a second freshness
+          // signal so a reader phone whose clock runs ahead of the server
+          // doesn't discard live typing entries as "stale".
+          Object.keys(fresh).forEach(function (uid) {
+            var prev = S.typing[uid];
+            if (!prev || prev.ts !== (fresh[uid] && fresh[uid].ts)) S.typingSeen[uid] = Date.now();
+          });
+          Object.keys(S.typingSeen).forEach(function (uid) { if (!fresh[uid]) delete S.typingSeen[uid]; });
+          S.typing = fresh;
           renderTyping();
         });
       }
@@ -1311,12 +1362,30 @@
         S.curDM = dmId;
         S.curPeer = { uid: peerUid, nickname: peerProfile.nickname || "Unknown", avatar: peerProfile.avatar || 0 };
         // Create/refresh the DM metadata + both users' sidebar entries.
-        var updates = {};
-        updates["dmMeta/" + dmId + "/members/" + S.uid] = { nickname: S.profile.nickname, avatar: S.profile.avatar };
-        updates["dmMeta/" + dmId + "/members/" + peerUid] = { nickname: S.curPeer.nickname, avatar: S.curPeer.avatar };
-        updates["userDMs/" + S.uid + "/" + dmId] = { peerUid: peerUid, peerNickname: S.curPeer.nickname, peerAvatar: S.curPeer.avatar, updatedAt: firebase.database.ServerValue.TIMESTAMP };
-        updates["userDMs/" + peerUid + "/" + dmId] = { peerUid: S.uid, peerNickname: S.profile.nickname, peerAvatar: S.profile.avatar, updatedAt: firebase.database.ServerValue.TIMESTAMP };
-        db.ref().update(updates).catch(function () {});
+        // These are written as SEPARATE writes on purpose: one atomic
+        // multi-path update fails entirely if any single path is denied,
+        // which used to kill the whole DM silently. Split up, my own
+        // userDMs entry and the shared dmMeta record still land. The other
+        // side discovers the conversation from its OWN userDMs node (the
+        // entry written below) and then reads dmMeta/{dmId} individually —
+        // there is no parent-level dmMeta query/listener.
+        var metaUpdates = {};
+        metaUpdates["dmMeta/" + dmId + "/members/" + S.uid] = { nickname: S.profile.nickname, avatar: S.profile.avatar };
+        metaUpdates["dmMeta/" + dmId + "/members/" + peerUid] = { nickname: S.curPeer.nickname, avatar: S.curPeer.avatar };
+        // Membership flags checked by the rules on an individual
+        // dmMeta/{dmId} read: only the two members of a conversation may
+        // read its metadata — other pairs' metadata is never downloaded.
+        metaUpdates["dmMeta/" + dmId + "/memberUids/" + S.uid] = true;
+        metaUpdates["dmMeta/" + dmId + "/memberUids/" + peerUid] = true;
+        db.ref().update(metaUpdates).catch(function (err) { dbErrToast(err, "Opening this DM"); });
+        db.ref("userDMs/" + S.uid + "/" + dmId).set({
+          peerUid: peerUid, peerNickname: S.curPeer.nickname, peerAvatar: S.curPeer.avatar,
+          updatedAt: firebase.database.ServerValue.TIMESTAMP
+        }).catch(function (err) { dbErrToast(err, "Saving this DM"); });
+        db.ref("userDMs/" + peerUid + "/" + dmId).set({
+          peerUid: S.uid, peerNickname: S.profile.nickname, peerAvatar: S.profile.avatar,
+          updatedAt: firebase.database.ServerValue.TIMESTAMP
+        }).catch(function () { /* peer's own userDMs entry is its discovery path */ });
         db.ref("dmMeta/" + dmId + "/createdAt").once("value").then(function (s) {
           if (!s.val()) db.ref("dmMeta/" + dmId + "/createdAt").set(firebase.database.ServerValue.TIMESTAMP);
         }).catch(function () {});
@@ -1357,14 +1426,16 @@
         }
         db.ref(base).push(payload).then(function () {
           if (S.view === "dm" && S.curDM && S.curPeer) {
-            var updates = {};
-            updates["dmMeta/" + S.curDM + "/lastTs"] = firebase.database.ServerValue.TIMESTAMP;
-            updates["dmMeta/" + S.curDM + "/lastText"] = text.slice(0, 140);
-            updates["userDMs/" + S.uid + "/" + S.curDM + "/updatedAt"] = firebase.database.ServerValue.TIMESTAMP;
-            updates["userDMs/" + S.curPeer.uid + "/" + S.curDM + "/updatedAt"] = firebase.database.ServerValue.TIMESTAMP;
-            db.ref().update(updates).catch(function () {});
+            // Split writes again (see openDM): the peer's userDMs bump must
+            // not be able to take the shared dmMeta update down with it.
+            var metaUpd = {};
+            metaUpd["dmMeta/" + S.curDM + "/lastTs"] = firebase.database.ServerValue.TIMESTAMP;
+            metaUpd["dmMeta/" + S.curDM + "/lastText"] = text.slice(0, 140);
+            db.ref().update(metaUpd).catch(function () {});
+            db.ref("userDMs/" + S.uid + "/" + S.curDM + "/updatedAt").set(firebase.database.ServerValue.TIMESTAMP).catch(function () {});
+            db.ref("userDMs/" + S.curPeer.uid + "/" + S.curDM + "/updatedAt").set(firebase.database.ServerValue.TIMESTAMP).catch(function () {});
           }
-        }).catch(function () { toast("Message failed to send. Check your connection."); });
+        }).catch(function (err) { dbErrToast(err, "Sending the message"); });
         var box = $("messages");
         box.scrollTop = box.scrollHeight;
       }
@@ -1374,7 +1445,7 @@
       }
 
       /* ================= Phase 2: typing indicator ================= */
-      var myTypingRef = null, myTypingTimer = null, lastTypingPoke = 0;
+      var myTypingRef = null, myTypingTimer = null, lastTypingPoke = 0, lastTypingErrAt = 0;
       function pokeTyping() {
         var p = typingPath();
         if (!p || !S.uid) return;
@@ -1385,9 +1456,16 @@
           try { myTypingRef.onDisconnect().remove(); } catch (e) {}
         }
         var now = Date.now();
-        if (now - lastTypingPoke > 2500) {
+        if (now - lastTypingPoke > 2000) {
           lastTypingPoke = now;
-          myTypingRef.set({ nickname: S.profile.nickname, ts: firebase.database.ServerValue.TIMESTAMP }).catch(function () {});
+          myTypingRef.set({ nickname: S.profile.nickname, ts: firebase.database.ServerValue.TIMESTAMP }).catch(function (err) {
+            // Was swallowed silently — a denied typing write looked like
+            // "typing indicator is broken". Tell the user (throttled).
+            if (Date.now() - lastTypingErrAt > 30000) {
+              lastTypingErrAt = Date.now();
+              dbErrToast(err, "The typing indicator");
+            }
+          });
         }
         clearTimeout(myTypingTimer);
         myTypingTimer = setTimeout(clearMyTyping, 3000);
@@ -1409,7 +1487,14 @@
         Object.keys(S.typing || {}).forEach(function (uid) {
           if (uid === S.uid) return;
           var t = S.typing[uid];
-          if (t && t.nickname && (now - (t.ts || 0)) < 6000) names.push(t.nickname);
+          if (!t || !t.nickname) return;
+          // Fresh if the server timestamp is recent — OR if this client
+          // recently observed the entry's timestamp change (protects
+          // against clock skew between the reader's phone and the server,
+          // which used to make live "X is typing" entries look expired).
+          var freshByServer = (now - (t.ts || 0)) < 6000;
+          var freshBySeen = S.typingSeen[uid] && (now - S.typingSeen[uid]) < 8000;
+          if (freshByServer || freshBySeen) names.push(t.nickname);
         });
         names.sort();
         if (!names.length) { bar.classList.remove("show"); bar.innerHTML = ""; return; }
@@ -1439,8 +1524,8 @@
         var m = S.curMsgs[mid];
         var mine = !!(m && m.reactions && m.reactions[key] && m.reactions[key][S.uid]);
         var ref = db.ref(base + "/" + mid + "/reactions/" + key + "/" + S.uid);
-        if (mine) ref.remove().catch(function () { toast("Could not update the reaction."); });
-        else ref.set(true).catch(function () { toast("Could not add the reaction."); });
+        if (mine) ref.remove().catch(function (err) { dbErrToast(err, "Updating the reaction"); });
+        else ref.set(true).catch(function (err) { dbErrToast(err, "Adding the reaction"); });
       }
       var pickerMid = null;
       function hideReactPicker() { $("reactPicker").classList.add("hidden"); pickerMid = null; }
@@ -1488,7 +1573,7 @@
           if (text === m.text) { cancel(); return; }
           var base = msgBasePath();
           db.ref(base + "/" + mid).update({ text: text, editedAt: firebase.database.ServerValue.TIMESTAMP })
-            .catch(function () { toast("Could not save the edit."); cancel(); });
+            .catch(function (err) { dbErrToast(err, "Saving the edit"); cancel(); });
           // The messages listener re-renders with the "(edited)" marker.
         }
         body.querySelector("[data-edit-cancel]").addEventListener("click", cancel);
@@ -1517,7 +1602,7 @@
           if (!base) return;
           db.ref(base + "/" + mid).remove().then(function () {
             toast("Message deleted.");
-          }).catch(function () { toast("Could not delete the message."); });
+          }).catch(function (err) { dbErrToast(err, "Deleting the message"); });
         });
       }
 
@@ -1525,7 +1610,19 @@
       function initPhase2() {
         $("messages").addEventListener("click", function (e) {
           var btn = e.target.closest ? e.target.closest("[data-action]") : null;
-          if (!btn) return;
+          if (!btn) {
+            // Tap/click on a message body toggles its action bar — the
+            // fallback for any browser where :hover never fires (touch),
+            // so React / Reply / Edit / Delete stay reachable everywhere.
+            var msgEl0 = e.target.closest ? e.target.closest(".msg") : null;
+            if (msgEl0 && !msgEl0.querySelector(".edit-box")) {
+              var wasOpen = msgEl0.classList.contains("show-actions");
+              var opened = $("messages").querySelectorAll(".msg.show-actions");
+              for (var oi = 0; oi < opened.length; oi++) opened[oi].classList.remove("show-actions");
+              if (!wasOpen) msgEl0.classList.add("show-actions");
+            }
+            return;
+          }
           var mid = btn.getAttribute("data-mid");
           var action = btn.getAttribute("data-action");
           if (!mid) return;
@@ -1546,6 +1643,80 @@
         $("replyCancelBtn").addEventListener("click", function () { setReplyTo(null); });
       }
 
+      /* Keep a presence listener on each DM partner (users/{peerUid}) and
+         drop listeners for partners no longer in the DM list. */
+      function watchDmPeers() {
+        var seen = {};
+        Object.keys(S.dmList).forEach(function (dmId) {
+          var peer = S.dmList[dmId].peerUid;
+          if (!peer || peer === S.uid) return;
+          seen[peer] = true;
+          if (!refs.peerPresence[peer]) {
+            var pr = db.ref("users/" + peer);
+            refs.peerPresence[peer] = pr;
+            pr.on("value", function (ps) {
+              var v = ps.val() || {};
+              var on = !!v.online;
+              if (S.peerOnline[peer] !== on) { S.peerOnline[peer] = on; renderDMList(); }
+              // Keep stale DM entries' names/avatars fresh from the profile
+              if (S.curPeer && S.curPeer.uid === peer && v.nickname) {
+                S.curPeer.nickname = v.nickname;
+                if (typeof v.avatar === "number") S.curPeer.avatar = v.avatar;
+              }
+            });
+          }
+        });
+        Object.keys(refs.peerPresence).forEach(function (peer) {
+          if (!seen[peer]) { refs.peerPresence[peer].off(); delete refs.peerPresence[peer]; delete S.peerOnline[peer]; }
+        });
+      }
+
+      /* DM metadata is read per conversation only: for every dmId found in
+         my own userDMs/{uid} list, attach an individual listener on
+         dmMeta/{dmId}. There is deliberately NO parent-level query or
+         listener on dmMeta — Firebase rules cannot validate a dynamic
+         memberUids comparison, so DM discovery comes from userDMs alone.
+         The individual reads keep the peer's name/avatar and the
+         conversation's last-activity time fresh in the sidebar entry. */
+      function attachDmMetaListener(dmId) {
+        if (refs.dmMetaById[dmId]) return;
+        var ref = db.ref("dmMeta/" + dmId);
+        refs.dmMetaById[dmId] = ref;
+        ref.on("value", function (snap) {
+          var conv = snap.val();
+          if (!conv) return;
+          var entry = S.dmList[dmId];
+          if (!entry) return;
+          var members = conv.members || {};
+          var peerUid = entry.peerUid;
+          if (!peerUid) {
+            Object.keys(members).forEach(function (u) { if (u !== S.uid && !peerUid) peerUid = u; });
+            if (!peerUid) return;
+            entry.peerUid = peerUid;
+          }
+          var pm = members[peerUid] || {};
+          var changed = false;
+          if (pm.nickname && entry.peerNickname !== pm.nickname) { entry.peerNickname = pm.nickname; changed = true; }
+          if (typeof pm.avatar === "number" && entry.peerAvatar !== pm.avatar) { entry.peerAvatar = pm.avatar; changed = true; }
+          var ts = conv.lastTs || conv.createdAt || 0;
+          if (ts && (entry.updatedAt || 0) < ts) { entry.updatedAt = ts; changed = true; }
+          if (changed) { watchDmPeers(); renderDMList(); }
+        });
+      }
+      function syncDmMetaListeners() {
+        var current = {};
+        Object.keys(S.dmList).forEach(function (dmId) {
+          current[dmId] = true;
+          attachDmMetaListener(dmId);
+        });
+        Object.keys(refs.dmMetaById).forEach(function (dmId) {
+          if (!current[dmId]) {
+            try { refs.dmMetaById[dmId].off(); } catch (e) {}
+            delete refs.dmMetaById[dmId];
+          }
+        });
+      }
+
       /* ================= App entry ================= */
       function enterApp() {
         if (S.entered) return;
@@ -1563,34 +1734,20 @@
         myUserRef.update({ online: true });
         myUserRef.onDisconnect().update({ online: false, lastSeen: firebase.database.ServerValue.TIMESTAMP });
 
-        // My DM list (userDMs/{uid}) — drives the sidebar "Direct Messages" section
+        // DM discovery — ONLY through my own userDMs/{uid} node. It holds
+        // the dmIds I belong to, and each entry already carries the peer's
+        // uid / nickname / avatar for the sidebar "Direct Messages" list.
+        // For every dmId found there, syncDmMetaListeners() reads that one
+        // conversation's dmMeta/{dmId} individually to keep the entry
+        // fresh. There is NO parent-level query or listener on dmMeta:
+        // a dynamic memberUids query cannot be validated by Firebase
+        // rules (the comparison's right side must be a string literal),
+        // so that discovery path was removed.
         refs.userDMs = db.ref("userDMs/" + S.uid);
         refs.userDMs.on("value", function (snap) {
           S.dmList = snap.val() || {};
-          // Keep a presence listener on each DM partner (users/{peerUid})
-          var seen = {};
-          Object.keys(S.dmList).forEach(function (dmId) {
-            var peer = S.dmList[dmId].peerUid;
-            if (!peer || peer === S.uid) return;
-            seen[peer] = true;
-            if (!refs.peerPresence[peer]) {
-              var pr = db.ref("users/" + peer);
-              refs.peerPresence[peer] = pr;
-              pr.on("value", function (ps) {
-                var v = ps.val() || {};
-                var on = !!v.online;
-                if (S.peerOnline[peer] !== on) { S.peerOnline[peer] = on; renderDMList(); }
-                // Keep stale DM entries' names/avatars fresh from the profile
-                if (S.curPeer && S.curPeer.uid === peer && v.nickname) {
-                  S.curPeer.nickname = v.nickname;
-                  if (typeof v.avatar === "number") S.curPeer.avatar = v.avatar;
-                }
-              });
-            }
-          });
-          Object.keys(refs.peerPresence).forEach(function (peer) {
-            if (!seen[peer]) { refs.peerPresence[peer].off(); delete refs.peerPresence[peer]; delete S.peerOnline[peer]; }
-          });
+          syncDmMetaListeners();
+          watchDmPeers();
           renderDMList();
         });
 
